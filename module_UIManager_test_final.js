@@ -1,14 +1,3 @@
-// ==UserScript==
-// @name         FBCMF UIManager (Enhanced + GM Storage Fix + Reload)
-// @namespace    http://tampermonkey.net/
-// @version      2.2.0
-// @description  Manages UI, uses SettingsManager context for GM storage, reloads on save.
-// @match        *://*.facebook.com/*
-// @grant        GM_setValue
-// @grant        GM_getValue
-// @require      https://cdn.jsdelivr.net/npm/@google/generative-ai@0.1.3/dist/index.js 
-// ==/UserScript==
-
 /**
  * Module: UIManager (Nâng cấp + Fix GM Storage + Reload)
  * Mục đích: Quản lý giao diện người dùng, sử dụng ctx.saveSettings (async) để lưu, tự động tải lại trang sau khi lưu.
