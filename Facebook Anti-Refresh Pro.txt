@@ -1,0 +1,767 @@
+(function() {
+    'use strict';
+
+    // === CONFIGURATION & LOCALIZATION ===
+    const CONFIG = {
+        version: '2.0',
+        debug: GM_getValue('debug', false),
+        enabled: GM_getValue('enabled', true),
+        lang: GM_getValue('language', 'vi'),
+        inactivityTime: GM_getValue('inactivityTime', 60000),
+        historyBlockTime: GM_getValue('historyBlockTime', 120000),
+        showNotifications: GM_getValue('showNotifications', true),
+        blockLevel: GM_getValue('blockLevel', 'medium') // low, medium, high
+    };
+
+    const LANG = {
+        vi: {
+            title: 'Facebook Chống Tự Động Tải Lại Pro',
+            enabled: 'Kích hoạt',
+            disabled: 'Tắt',
+            settings: 'Cài đặt',
+            language: 'Ngôn ngữ',
+            blockLevel: 'Mức độ chặn',
+            low: 'Thấp',
+            medium: 'Trung bình',
+            high: 'Cao',
+            inactivityTime: 'Thời gian không hoạt động (giây)',
+            notifications: 'Thông báo',
+            debug: 'Debug',
+            save: 'Lưu',
+            reset: 'Đặt lại',
+            blocked: 'Đã chặn yêu cầu tải lại',
+            active: 'Bảo vệ đang hoạt động',
+            stats: 'Thống kê',
+            blockedCount: 'Lần chặn',
+            uptime: 'Thời gian hoạt động'
+        },
+        en: {
+            title: 'Facebook Anti-Refresh Pro',
+            enabled: 'Enabled',
+            disabled: 'Disabled',
+            settings: 'Settings',
+            language: 'Language',
+            blockLevel: 'Block Level',
+            low: 'Low',
+            medium: 'Medium',
+            high: 'High',
+            inactivityTime: 'Inactivity Time (seconds)',
+            notifications: 'Notifications',
+            debug: 'Debug',
+            save: 'Save',
+            reset: 'Reset',
+            blocked: 'Blocked refresh request',
+            active: 'Protection active',
+            stats: 'Statistics',
+            blockedCount: 'Blocked',
+            uptime: 'Uptime'
+        }
+    };
+
+    const t = (key) => LANG[CONFIG.lang][key] || LANG.en[key] || key;
+
+    // === SECURITY & PERFORMANCE ===
+    const security = {
+        validateOrigin: () => {
+            return window.location.hostname.includes('facebook.com');
+        },
+
+        sanitizeInput: (input) => {
+            if (typeof input !== 'string') return '';
+            return input.replace(/[<>'"&]/g, '');
+        },
+
+        rateLimiter: {
+            calls: new Map(),
+            isAllowed: (key, limit = 10, window = 1000) => {
+                const now = Date.now();
+                const calls = security.rateLimiter.calls.get(key) || [];
+                const recent = calls.filter(time => now - time < window);
+
+                if (recent.length >= limit) return false;
+
+                recent.push(now);
+                security.rateLimiter.calls.set(key, recent);
+                return true;
+            }
+        }
+    };
+
+    // === ENHANCED LOGGING ===
+    const logger = {
+        prefix: '[FB Anti-Refresh Pro]',
+
+        log: (...args) => {
+            if (CONFIG.debug) console.log(logger.prefix, ...args);
+        },
+
+        warn: (...args) => {
+            console.warn(logger.prefix, ...args);
+        },
+
+        error: (...args) => {
+            console.error(logger.prefix, ...args);
+        },
+
+        performance: (label, fn) => {
+            if (!CONFIG.debug) return fn();
+
+            const start = performance.now();
+            const result = fn();
+            const end = performance.now();
+            logger.log(`${label}: ${(end - start).toFixed(2)}ms`);
+            return result;
+        }
+    };
+
+    // === STATISTICS ===
+    const stats = {
+        startTime: Date.now(),
+        blockedRequests: GM_getValue('blockedRequests', 0),
+
+        increment: (key) => {
+            stats[key] = (stats[key] || 0) + 1;
+            GM_setValue(key, stats[key]);
+        },
+
+        getUptime: () => {
+            const uptime = Date.now() - stats.startTime;
+            const hours = Math.floor(uptime / 3600000);
+            const minutes = Math.floor((uptime % 3600000) / 60000);
+            return `${hours}h ${minutes}m`;
+        }
+    };
+
+    // === UI COMPONENTS ===
+    const ui = {
+        elements: {},
+
+        createPanel: () => {
+            const panel = document.createElement('div');
+            panel.id = 'fb-antirefresh-panel';
+            panel.innerHTML = `
+                <div class="fb-ar-header">
+                    <span class="fb-ar-title">${t('title')}</span>
+                    <div class="fb-ar-status ${CONFIG.enabled ? 'enabled' : 'disabled'}">
+                        ${CONFIG.enabled ? t('enabled') : t('disabled')}
+                    </div>
+                    <button class="fb-ar-toggle">⚙️</button>
+                    <button class="fb-ar-minimize">−</button>
+                </div>
+                <div class="fb-ar-content" style="display: none;">
+                    <div class="fb-ar-stats">
+                        <div><strong>${t('stats')}:</strong></div>
+                        <div>${t('blockedCount')}: <span id="blocked-count">${stats.blockedRequests}</span></div>
+                        <div>${t('uptime')}: <span id="uptime">${stats.getUptime()}</span></div>
+                    </div>
+
+                    <div class="fb-ar-controls">
+                        <label>
+                            <input type="checkbox" id="enable-toggle" ${CONFIG.enabled ? 'checked' : ''}>
+                            ${t('enabled')}
+                        </label>
+
+                        <label>
+                            ${t('language')}:
+                            <select id="lang-select">
+                                <option value="vi" ${CONFIG.lang === 'vi' ? 'selected' : ''}>Tiếng Việt</option>
+                                <option value="en" ${CONFIG.lang === 'en' ? 'selected' : ''}>English</option>
+                            </select>
+                        </label>
+
+                        <label>
+                            ${t('blockLevel')}:
+                            <select id="block-level">
+                                <option value="low" ${CONFIG.blockLevel === 'low' ? 'selected' : ''}>${t('low')}</option>
+                                <option value="medium" ${CONFIG.blockLevel === 'medium' ? 'selected' : ''}>${t('medium')}</option>
+                                <option value="high" ${CONFIG.blockLevel === 'high' ? 'selected' : ''}>${t('high')}</option>
+                            </select>
+                        </label>
+
+                        <label>
+                            ${t('inactivityTime')}:
+                            <input type="number" id="inactivity-time" value="${CONFIG.inactivityTime / 1000}" min="10" max="300">
+                        </label>
+
+                        <label>
+                            <input type="checkbox" id="notifications-toggle" ${CONFIG.showNotifications ? 'checked' : ''}>
+                            ${t('notifications')}
+                        </label>
+
+                        <label>
+                            <input type="checkbox" id="debug-toggle" ${CONFIG.debug ? 'checked' : ''}>
+                            ${t('debug')}
+                        </label>
+                    </div>
+
+                    <div class="fb-ar-buttons">
+                        <button id="save-btn">${t('save')}</button>
+                        <button id="reset-btn">${t('reset')}</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(panel);
+            ui.elements.panel = panel;
+            ui.attachEvents();
+        },
+
+        attachEvents: () => {
+            const panel = ui.elements.panel;
+
+            // Settings toggle
+            panel.querySelector('.fb-ar-toggle').addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fbAntiRefresh.toggleSettings();
+            });
+
+            // Minimize button
+            panel.querySelector('.fb-ar-minimize').addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fbAntiRefresh.minimize();
+            });
+
+            // Save button
+            panel.querySelector('#save-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fbAntiRefresh.saveSettings();
+            });
+
+            // Reset button
+            panel.querySelector('#reset-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                fbAntiRefresh.resetSettings();
+            });
+
+            // Enable toggle
+            panel.querySelector('#enable-toggle').addEventListener('change', (e) => {
+                CONFIG.enabled = e.target.checked;
+                ui.updateStatus();
+            });
+
+            // Make panel draggable
+            let isDragging = false;
+            let startX, startY, startLeft, startTop;
+
+            const header = panel.querySelector('.fb-ar-header');
+            header.addEventListener('mousedown', (e) => {
+                if (e.target.classList.contains('fb-ar-toggle') || e.target.classList.contains('fb-ar-minimize')) {
+                    return; // Don't drag when clicking buttons
+                }
+
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = panel.offsetLeft;
+                startTop = panel.offsetTop;
+
+                const onMouseMove = (e) => {
+                    if (!isDragging) return;
+
+                    const deltaX = e.clientX - startX;
+                    const deltaY = e.clientY - startY;
+
+                    panel.style.left = (startLeft + deltaX) + 'px';
+                    panel.style.top = (startTop + deltaY) + 'px';
+                };
+
+                const onMouseUp = () => {
+                    isDragging = false;
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+
+                document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mouseup', onMouseUp);
+            });
+        },
+
+        updateStats: () => {
+            const blockedElement = document.getElementById('blocked-count');
+            const uptimeElement = document.getElementById('uptime');
+
+            if (blockedElement) blockedElement.textContent = stats.blockedRequests;
+            if (uptimeElement) uptimeElement.textContent = stats.getUptime();
+        },
+
+        showNotification: (message, type = 'info') => {
+            if (!CONFIG.showNotifications) return;
+
+            const notification = document.createElement('div');
+            notification.className = `fb-ar-notification ${type}`;
+            notification.textContent = message;
+
+            document.body.appendChild(notification);
+
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+    };
+
+    // === ENHANCED BLOCKING LOGIC ===
+    const blocker = {
+        lastActivity: { time: Date.now() },
+
+        getBlockEndpoints: () => {
+            const levels = {
+                low: [
+                    '/ajax/home/generic.php',
+                    '/ajax/pagelet/generic.php/HomeStream'
+                ],
+                medium: [
+                    '/ajax/home/generic.php',
+                    '/ajax/pagelet/generic.php/HomeStream',
+                    '/ajax/ticker_stream.php',
+                    '/api/graphql/',
+                    '/ajax/bootloader-endpoint/'
+                ],
+                high: [
+                    '/ajax/home/generic.php',
+                    '/ajax/pagelet/generic.php/HomeStream',
+                    '/ajax/ticker_stream.php',
+                    '/api/graphql/',
+                    '/ajax/bootloader-endpoint/',
+                    '/ajax/webstorage/process_set.php',
+                    '/ajax/presence/update.php'
+                ]
+            };
+
+            return levels[CONFIG.blockLevel] || levels.medium;
+        },
+
+        shouldBlock: (url) => {
+            if (!CONFIG.enabled) return false;
+            if (!security.validateOrigin()) return false;
+
+            const timeSinceActivity = Date.now() - blocker.lastActivity.time;
+            const endpoints = blocker.getBlockEndpoints();
+
+            const isRefreshRequest = endpoints.some(endpoint =>
+                url.includes(endpoint)
+            );
+
+            return isRefreshRequest && timeSinceActivity > CONFIG.inactivityTime;
+        },
+
+        updateActivity: () => {
+            blocker.lastActivity.time = Date.now();
+        }
+    };
+
+    // === CSS STYLES ===
+    GM_addStyle(`
+        #fb-antirefresh-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 320px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            z-index: 999999;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            color: white;
+            user-select: none;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .fb-ar-header {
+            padding: 12px 16px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: move;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .fb-ar-title {
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .fb-ar-status {
+            padding: 4px 8px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .fb-ar-status.enabled {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .fb-ar-status.disabled {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .fb-ar-toggle, .fb-ar-minimize {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s ease;
+        }
+
+        .fb-ar-toggle:hover, .fb-ar-minimize:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .fb-ar-content {
+            padding: 16px;
+        }
+
+        .fb-ar-stats {
+            background: rgba(0,0,0,0.2);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .fb-ar-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .fb-ar-controls label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+
+        .fb-ar-controls input[type="checkbox"] {
+            margin-left: 8px;
+        }
+
+        .fb-ar-controls select, .fb-ar-controls input[type="number"] {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 6px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            width: 80px;
+        }
+
+        .fb-ar-controls select option {
+            background: #333;
+            color: white;
+        }
+
+        .fb-ar-buttons {
+            display: flex;
+            gap: 8px;
+        }
+
+        .fb-ar-buttons button {
+            flex: 1;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s ease;
+        }
+
+        .fb-ar-buttons button:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .fb-ar-notification {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000000;
+            font-size: 13px;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+            max-width: 280px;
+        }
+
+        .fb-ar-notification.success {
+            background: #22c55e;
+        }
+
+        .fb-ar-notification.warning {
+            background: #f59e0b;
+        }
+
+        .fb-ar-notification.error {
+            background: #ef4444;
+        }
+    `);
+
+    // === MAIN FUNCTIONALITY ===
+    const fbAntiRefresh = {
+        init: () => {
+            if (!security.validateOrigin()) {
+                logger.error('Invalid origin, aborting');
+                return;
+            }
+
+            logger.log(`Starting v${CONFIG.version}...`);
+
+            fbAntiRefresh.setupVisibilityOverrides();
+            fbAntiRefresh.setupEventBlocking();
+            fbAntiRefresh.setupFetchInterception();
+            fbAntiRefresh.setupActivityTracking();
+            fbAntiRefresh.setupHistoryBlocking();
+            fbAntiRefresh.setupUI();
+            fbAntiRefresh.removeMetaRefresh();
+
+            logger.log(t('active'));
+            ui.showNotification(t('active'), 'success');
+
+            // Update stats every minute
+            setInterval(() => {
+                ui.updateStats();
+            }, 60000);
+        },
+
+        setupVisibilityOverrides: () => {
+            logger.performance('Visibility Override', () => {
+                try {
+                    Object.defineProperty(document, 'hidden', {
+                        configurable: true,
+                        get: () => false
+                    });
+
+                    Object.defineProperty(document, 'visibilityState', {
+                        configurable: true,
+                        get: () => 'visible'
+                    });
+
+                    const originalHasFocus = document.hasFocus;
+                    document.hasFocus = () => true;
+
+                    logger.log('Visibility API overridden');
+                } catch (e) {
+                    logger.warn('Could not override visibility API:', e);
+                }
+            });
+        },
+
+        setupEventBlocking: () => {
+            const originalAddEventListener = EventTarget.prototype.addEventListener;
+
+            EventTarget.prototype.addEventListener = function(type, listener, options) {
+                if (!CONFIG.enabled) {
+                    return originalAddEventListener.call(this, type, listener, options);
+                }
+
+                const blockedEvents = [
+                    'visibilitychange',
+                    'webkitvisibilitychange',
+                    'mozvisibilitychange'
+                ];
+
+                if (blockedEvents.includes(type)) {
+                    logger.log(`Blocked event listener: ${type}`);
+                    return;
+                }
+
+                return originalAddEventListener.call(this, type, listener, options);
+            };
+
+            // Override window focus events
+            try {
+                Object.defineProperty(window, 'onblur', {
+                    configurable: true,
+                    get: () => null,
+                    set: () => {}
+                });
+
+                Object.defineProperty(window, 'onfocus', {
+                    configurable: true,
+                    get: () => null,
+                    set: () => {}
+                });
+            } catch (e) {
+                logger.warn('Could not override window focus events:', e);
+            }
+        },
+
+        setupFetchInterception: () => {
+            const originalFetch = window.fetch;
+
+            window.fetch = function(...args) {
+                const [url] = args;
+
+                if (typeof url === 'string' && url.includes('facebook.com')) {
+                    if (!security.rateLimiter.isAllowed('fetch', 50, 1000)) {
+                        logger.warn('Rate limit exceeded for fetch requests');
+                        return Promise.resolve(new Response('{}', {
+                            status: 429,
+                            headers: { 'Content-Type': 'application/json' }
+                        }));
+                    }
+
+                    if (blocker.shouldBlock(url)) {
+                        logger.log(t('blocked'), url);
+                        stats.increment('blockedRequests');
+                        ui.updateStats();
+                        ui.showNotification(t('blocked'), 'warning');
+
+                        return Promise.resolve(new Response('{}', {
+                            status: 200,
+                            headers: { 'Content-Type': 'application/json' }
+                        }));
+                    }
+                }
+
+                return originalFetch.apply(this, args);
+            };
+        },
+
+        setupActivityTracking: () => {
+            ['click', 'scroll', 'keypress', 'mousemove', 'touchstart'].forEach(event => {
+                document.addEventListener(event, () => {
+                    blocker.updateActivity();
+                }, { passive: true, capture: true });
+            });
+        },
+
+        setupHistoryBlocking: () => {
+            const originalPushState = history.pushState;
+
+            history.pushState = function(...args) {
+                if (!CONFIG.enabled) {
+                    return originalPushState.apply(this, args);
+                }
+
+                const timeSinceActivity = Date.now() - blocker.lastActivity.time;
+
+                if (timeSinceActivity > CONFIG.historyBlockTime) {
+                    logger.log('Blocked history.pushState due to inactivity');
+                    return;
+                }
+
+                return originalPushState.apply(this, args);
+            };
+        },
+
+        setupUI: () => {
+            // Wait for document to be ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', ui.createPanel);
+            } else {
+                ui.createPanel();
+            }
+        },
+
+        removeMetaRefresh: () => {
+            const removeRefreshTags = () => {
+                const metaTags = document.querySelectorAll('meta[http-equiv="refresh"]');
+                metaTags.forEach(tag => {
+                    tag.remove();
+                    logger.log('Removed meta refresh tag');
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', removeRefreshTags);
+            } else {
+                removeRefreshTags();
+            }
+
+            // Watch for dynamically added meta tags
+            const observer = new MutationObserver(mutations => {
+                mutations.forEach(mutation => {
+                    mutation.addedNodes.forEach(node => {
+                        if (node.nodeType === 1 && node.tagName === 'META' &&
+                            node.getAttribute('http-equiv') === 'refresh') {
+                            node.remove();
+                            logger.log('Removed dynamically added meta refresh tag');
+                        }
+                    });
+                });
+            });
+
+            observer.observe(document.head || document.documentElement, {
+                childList: true,
+                subtree: true
+            });
+        },
+
+        // UI Methods
+        toggleSettings: () => {
+            const content = ui.elements.panel.querySelector('.fb-ar-content');
+            content.style.display = content.style.display === 'none' ? 'block' : 'none';
+        },
+
+        minimize: () => {
+            const panel = ui.elements.panel;
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        },
+
+        saveSettings: () => {
+            const newConfig = {
+                enabled: document.getElementById('enable-toggle').checked,
+                lang: document.getElementById('lang-select').value,
+                blockLevel: document.getElementById('block-level').value,
+                inactivityTime: parseInt(document.getElementById('inactivity-time').value) * 1000,
+                showNotifications: document.getElementById('notifications-toggle').checked,
+                debug: document.getElementById('debug-toggle').checked
+            };
+
+            Object.keys(newConfig).forEach(key => {
+                CONFIG[key] = newConfig[key];
+                GM_setValue(key, newConfig[key]);
+            });
+
+            ui.showNotification('Đã lưu cài đặt!', 'success');
+
+            // Reload if language changed
+            if (CONFIG.lang !== newConfig.lang) {
+                location.reload();
+            }
+        },
+
+        resetSettings: () => {
+            if (confirm('Bạn có muốn đặt lại tất cả cài đặt?')) {
+                Object.keys(CONFIG).forEach(key => {
+                    GM_setValue(key, undefined);
+                });
+                location.reload();
+            }
+        }
+    };
+
+    // === GLOBAL EXPOSURE ===
+    window.fbAntiRefresh = fbAntiRefresh;
+
+    // === INITIALIZE ===
+    fbAntiRefresh.init();
+
+})();

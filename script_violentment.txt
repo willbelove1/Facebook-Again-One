@@ -1,0 +1,44 @@
+// ==UserScript==
+// @name         Facebook Cleaner One
+// @description  Facebook Cleaner mô-đun hóa với FBCMF Core Framework
+// @namespace    Johnny Inc.
+// @version      3.0 beta
+// @author       Johnny Inc.
+// @grant        GM_setValue
+// @grant        GM_getValue
+// @match        https://www.facebook.com/*
+// @match        https://web.facebook.com/*
+// @match        https://facebook.com/*
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/fbcmf_core_framework_enhanced.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_SettingsManager.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_FilterRegistry_fixed.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_UIManager_test_final.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/refs/heads/main/module_blockSponsored_2025_ver8.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_blockSuggested_filterRegistry.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_blockReels_filterRegistry_2025_ver1.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_blockKeywords_filterRegistry.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_blockGIFs_filterRegistry.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_MutationObserver_2025_ver3.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_FeedExpander_2025_ver7.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_dialogPosition.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_language.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_VideoAdBlocker.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_ReelVideoControls.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_LogoutButton.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_CommentsHelper.js
+// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_AI.js
+// ==/UserScript==
+
+if (!window.__FBCMF_SKIP_INIT__) {
+  window.addEventListener('load', () => {
+    try {
+      if (typeof FBCMF !== 'undefined') {
+        FBCMF.init();
+      } else {
+        console.error('FBCMF not loaded');
+      }
+    } catch (error) {
+      console.error('FBCMF init error:', error);
+    }
+  });
+}
