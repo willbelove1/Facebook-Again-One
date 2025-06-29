@@ -92,7 +92,27 @@
         exportSettings: "Export Settings",
         importSuccess: "✅ Settings imported successfully. Reloading page...",
         importError: "❌ Error importing settings. Check JSON format and console.",
-        exportInstructions: "Copy the JSON below to back up your settings."
+        exportInstructions: "Copy the JSON below to back up your settings.",
+
+        // Labels for AntiRefreshPro
+        antiRefreshSettingsTitle: "Anti-Refresh Settings",
+        antiRefreshEnable: "Enable Anti-Refresh",
+        antiRefreshLanguage: "Language (Anti-Refresh)", // Keep distinct if ARPro has its own lang setting
+        antiRefreshBlockLevel: "Block Level",
+        antiRefreshBlockLow: "Low",
+        antiRefreshBlockMedium: "Medium",
+        antiRefreshBlockHigh: "High",
+        antiRefreshInactivityTime: "Inactivity Time (sec)",
+        antiRefreshShowNotifications: "Show Notifications (Anti-Refresh)",
+        antiRefreshDebug: "Enable Debug Mode (Anti-Refresh)",
+
+        // Labels for MultiColumnEnhanced
+        multiColumnSettingsTitle: "Multi-Column Settings",
+        multiColumnEnable: "Enable Multi-Column Layout",
+        multiColumnColumnCount: "Number of Columns",
+        multiColumnColumnGap: "Column Gap (px)",
+        multiColumnMaxPostHeight: "Max Post Height (%)",
+        multiColumnSidebarWidth: "Sidebar Width (px)",
       },
       vi: {
         settings: "Cài đặt",
@@ -133,7 +153,27 @@
         exportSettings: "Xuất Cài đặt",
         importSuccess: "✅ Nhập cài đặt thành công. Đang tải lại trang...",
         importError: "❌ Lỗi khi nhập cài đặt. Kiểm tra định dạng JSON và console.",
-        exportInstructions: "Sao chép đoạn JSON dưới đây để sao lưu cài đặt của bạn."
+        exportInstructions: "Sao chép đoạn JSON dưới đây để sao lưu cài đặt của bạn.",
+
+        // Labels for AntiRefreshPro - Vietnamese
+        antiRefreshSettingsTitle: "Cài đặt Chống Tải Lại",
+        antiRefreshEnable: "Bật Chống Tải Lại",
+        antiRefreshLanguage: "Ngôn ngữ (Chống Tải Lại)",
+        antiRefreshBlockLevel: "Mức độ chặn",
+        antiRefreshBlockLow: "Thấp",
+        antiRefreshBlockMedium: "Trung bình",
+        antiRefreshBlockHigh: "Cao",
+        antiRefreshInactivityTime: "TGian không hoạt động (giây)",
+        antiRefreshShowNotifications: "Hiện thông báo (Chống Tải Lại)",
+        antiRefreshDebug: "Bật chế độ Debug (Chống Tải Lại)",
+
+        // Labels for MultiColumnEnhanced - Vietnamese
+        multiColumnSettingsTitle: "Cài đặt Đa Cột",
+        multiColumnEnable: "Bật bố cục Đa Cột",
+        multiColumnColumnCount: "Số cột",
+        multiColumnColumnGap: "Khoảng cách cột (px)",
+        multiColumnMaxPostHeight: "Chiều cao tối đa bài viết (%)",
+        multiColumnSidebarWidth: "Độ rộng thanh bên (px)",
       }
     };
 
@@ -589,6 +629,30 @@
           createSelect("theme", getLabel("theme"), [ {value: "light", text: getLabel("light")}, {value: "dark", text: getLabel("dark")} ]),
           createSelect("verbosity", getLabel("verbosity"), [ {value: "minimal", text: getLabel("minimal")}, {value: "verbose", text: getLabel("verbose")} ])
         ]),
+        // --- Anti-Refresh Pro Settings ---
+        ctx.DOMUtils.createElement("div", { className: "fbcmf-section" }, [
+            ctx.DOMUtils.createElement("div", { className: "fbcmf-section-title" }, getLabel("antiRefreshSettingsTitle")),
+            createCheckbox("antiRefresh_enabled", getLabel("antiRefreshEnable")),
+            // Note: ARPro language might be separate or sync with global. For now, adding as a distinct setting.
+            // createSelect("antiRefresh_lang", getLabel("antiRefreshLanguage"), [ {value: "vi", text: "Tiếng Việt"}, {value: "en", text: "English"} ]),
+            createSelect("antiRefresh_blockLevel", getLabel("antiRefreshBlockLevel"), [
+                {value: "low", text: getLabel("antiRefreshBlockLow")},
+                {value: "medium", text: getLabel("antiRefreshBlockMedium")},
+                {value: "high", text: getLabel("antiRefreshBlockHigh")}
+            ]),
+            createInput("number", "antiRefresh_inactivityTime_seconds", getLabel("antiRefreshInactivityTime")), // Will handle s to ms conversion in save/load
+            createCheckbox("antiRefresh_showNotifications", getLabel("antiRefreshShowNotifications")),
+            createCheckbox("antiRefresh_debug", getLabel("antiRefreshDebug")),
+        ]),
+        // --- Multi-Column Enhanced Settings ---
+        ctx.DOMUtils.createElement("div", { className: "fbcmf-section" }, [
+            ctx.DOMUtils.createElement("div", { className: "fbcmf-section-title" }, getLabel("multiColumnSettingsTitle")),
+            createCheckbox("multiColumn_enabled", getLabel("multiColumnEnable")),
+            createRangeInput("multiColumn_columnCount", getLabel("multiColumnColumnCount"), {min:1, max:6, valueSuffix:''}),
+            createRangeInput("multiColumn_columnGap", getLabel("multiColumnColumnGap"), {min:10, max:50, valueSuffix:'px'}),
+            createRangeInput("multiColumn_maxPostHeight", getLabel("multiColumnMaxPostHeight"), {min:50, max:100, valueSuffix:'%'}),
+            createRangeInput("multiColumn_sidebarWidth", getLabel("multiColumnSidebarWidth"), {min:50, max:200, valueSuffix:'px'}),
+        ]),
         // --- Advanced Settings Panel (Initially Hidden) --- 
         ctx.DOMUtils.createElement("div", { id: "fbcmf-advanced-panel", className: "fbcmf-advanced-panel" }, [
             // Reels & Video Section
@@ -674,6 +738,34 @@
         ]);
     }
 
+    // Helper to create range input label structure
+    function createRangeInput(idSuffix, labelText, attributes = {}) {
+        const id = `fbcmf-${idSuffix}`;
+        const valueDisplayId = `${id}-value`;
+        const { min = 0, max = 100, valueSuffix = '' } = attributes;
+
+        const label = ctx.DOMUtils.createElement("label", { htmlFor: id }, labelText);
+        const valueDisplay = ctx.DOMUtils.createElement("span", { id: valueDisplayId, style: { marginLeft: '10px', fontStyle: 'italic' } }); // Added style
+        const input = ctx.DOMUtils.createElement("input", { type: "range", id: id, min: min, max: max });
+
+        // Append valueDisplay next to the label text, not inside the input
+        label.appendChild(valueDisplay);
+
+        // Listener to update the display span
+        input.addEventListener('input', () => {
+            const display = settingsPopup.querySelector(`#${valueDisplayId}`);
+            if (display) display.textContent = `${input.value}${valueSuffix}`;
+        });
+
+        // Return a container or an array of elements to be appended
+        // For simplicity, returning a document fragment or allowing createSettingsPopup to handle appending
+        const container = document.createDocumentFragment();
+        container.appendChild(label);
+        container.appendChild(input); // Input below label
+        return container;
+    }
+
+
     // Populate form fields with current settings
     function populateSettingsForm() {
       if (!settingsPopup || !ctx.settings) {
@@ -687,7 +779,11 @@
           "blockSponsored", "blockSuggested", "blockReels", "blockGIFs", 
           "blockKeywords", "expandNewsFeed", "videoAdBlocker", "showAllComments",
           "autoDetectComments", "notifyComments", "scrollComments", "hideAnonymous",
-          "autoSortChrono", "autoSuggestKeywords"
+          "autoSortChrono", "autoSuggestKeywords",
+          // AntiRefreshPro checkboxes
+          "antiRefresh_enabled", "antiRefresh_showNotifications", "antiRefresh_debug",
+          // MultiColumnEnhanced checkbox
+          "multiColumn_enabled"
       ];
       checkboxes.forEach(key => {
           const element = settingsPopup.querySelector(`#fbcmf-${key}`);
@@ -709,16 +805,45 @@
               }
           }
       }
+
+      // Populate AntiRefreshPro inactivity time (converting ms to s)
+      const inactivityTimeInput = settingsPopup.querySelector("#fbcmf-antiRefresh_inactivityTime_seconds");
+      if (inactivityTimeInput) {
+          inactivityTimeInput.value = (ctx.settings.antiRefresh_inactivityTime !== undefined) ? (ctx.settings.antiRefresh_inactivityTime / 1000) : ((FBCMF_SettingsManager_Defaults?.antiRefresh_inactivityTime || 60000) / 1000) ;
+          // Add min/max attributes if not already set by createInput helper, e.g.
+          inactivityTimeInput.min = "10"; // Example min
+          inactivityTimeInput.max = "300"; // Example max
+      }
       
       // Selects
-      const selects = ["language", "theme", "verbosity"];
+      const selects = ["language", "theme", "verbosity", "antiRefresh_blockLevel" /*, "antiRefresh_lang" */]; // Added antiRefresh_blockLevel
       selects.forEach(key => {
           const element = settingsPopup.querySelector(`#fbcmf-${key}`);
           if (element) {
-              element.value = ctx.settings[key] || ""; // Use default from select if setting is missing
+              element.value = ctx.settings[key] !== undefined ? ctx.settings[key] : (FBCMF_SettingsManager_Defaults?.[key] || "");
+              if (key === "antiRefresh_blockLevel" && !element.querySelector(`option[value="${element.value}"]`)) {
+                element.value = FBCMF_SettingsManager_Defaults?.antiRefresh_blockLevel || "medium";
+              }
           }
       });
 
+      // Populate MultiColumnEnhanced range inputs
+      const rangeInputsMCE = {
+          "multiColumn_columnCount": { suffix: '' },
+          "multiColumn_columnGap": { suffix: 'px' },
+          "multiColumn_maxPostHeight": { suffix: '%' },
+          "multiColumn_sidebarWidth": { suffix: 'px' }
+      };
+      for (const [key, config] of Object.entries(rangeInputsMCE)) {
+          const inputElement = settingsPopup.querySelector(`#fbcmf-${key}`);
+          const valueDisplayElement = settingsPopup.querySelector(`#fbcmf-${key}-value`);
+          if (inputElement) {
+              inputElement.value = ctx.settings[key] !== undefined ? ctx.settings[key] : (FBCMF_SettingsManager_Defaults?.[key] || inputElement.min);
+              if (valueDisplayElement) {
+                  valueDisplayElement.textContent = `${inputElement.value}${config.suffix}`;
+              }
+          }
+      }
       log("Settings form populated.");
     }
 
@@ -763,10 +888,14 @@
           "blockSponsored", "blockSuggested", "blockReels", "blockGIFs", 
           "blockKeywords", "expandNewsFeed", "videoAdBlocker", "showAllComments",
           "autoDetectComments", "notifyComments", "scrollComments", "hideAnonymous",
-          "autoSortChrono", "autoSuggestKeywords"
+          "autoSortChrono", "autoSuggestKeywords",
+          // AntiRefreshPro checkboxes
+          "antiRefresh_enabled", "antiRefresh_showNotifications", "antiRefresh_debug",
+          // MultiColumnEnhanced checkbox
+          "multiColumn_enabled"
       ];
       checkboxes.forEach(key => {
-          const element = settingsPopup.querySelector(`#fbcmf-${key}`);
+          const element = settingsPopup.querySelector(`#fbcmf-${key}`); // IDs are already prefixed with fbcmf-
           if (element) newSettings[key] = element.checked;
       });
 
@@ -776,21 +905,36 @@
           const element = settingsPopup.querySelector(`#fbcmf-${idSuffix}`);
           if (element) {
               if (settingKey === "blockedKeywords") {
-                  // Split keywords, trim whitespace, remove empty strings
-                  newSettings[settingKey] = element.value.split(",")
-                                                .map(k => k.trim())
-                                                .filter(k => k.length > 0);
+                  newSettings[settingKey] = element.value.split(",").map(k => k.trim()).filter(k => k.length > 0);
               } else {
                   newSettings[settingKey] = element.value;
               }
           }
       }
 
+      // Collect AntiRefreshPro inactivity time (converting s to ms)
+      const inactivityTimeValue = settingsPopup.querySelector("#fbcmf-antiRefresh_inactivityTime_seconds")?.value;
+      if (inactivityTimeValue !== undefined) {
+          const timeInSeconds = parseInt(inactivityTimeValue, 10);
+          if (!isNaN(timeInSeconds)) {
+              newSettings.antiRefresh_inactivityTime = timeInSeconds * 1000;
+          }
+      }
+
       // Collect Selects
-      const selects = ["language", "theme", "verbosity"];
+      const selects = ["language", "theme", "verbosity", "antiRefresh_blockLevel" /*, "antiRefresh_lang"*/];
       selects.forEach(key => {
           const element = settingsPopup.querySelector(`#fbcmf-${key}`);
           if (element) newSettings[key] = element.value;
+      });
+
+      // Collect MultiColumnEnhanced range inputs
+      const rangeInputsMCEKeys = ["multiColumn_columnCount", "multiColumn_columnGap", "multiColumn_maxPostHeight", "multiColumn_sidebarWidth"];
+      rangeInputsMCEKeys.forEach(key => {
+          const element = settingsPopup.querySelector(`#fbcmf-${key}`);
+          if (element) {
+              newSettings[key] = parseInt(element.value, 10); // Ensure they are stored as numbers
+          }
       });
 
       log("Collected settings to save: " + JSON.stringify(newSettings));

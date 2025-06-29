@@ -152,150 +152,44 @@
             }
         };
 
-        // === UI COMPONENTS (Prefixed IDs, uses context.DOMUtils if preferred) ===
-        const ui = {
-            elements: {},
-            panelId: 'fbcmf-ar-panel',
-            createPanel: () => {
-                if (document.getElementById(ui.panelId)) return; // Avoid duplicates
+        // === UI COMPONENTS (REMOVED as UI is now in UIManager) ===
+        // const ui = { ... }
 
-                const panel = context.DOMUtils.createElement('div', { id: ui.panelId });
-                // InnerHTML structure needs to be updated with prefixed IDs
-                panel.innerHTML = `
-                    <div class="fbcmf-ar-header">
-                        <span class="fbcmf-ar-title">${t('title')}</span>
-                        <div class="fbcmf-ar-status ${CONFIG.enabled ? 'enabled' : 'disabled'}">
-                            ${CONFIG.enabled ? t('enabled') : t('disabled')}
-                        </div>
-                        <button class="fbcmf-ar-toggle">⚙️</button>
-                        <button class="fbcmf-ar-minimize">−</button>
-                    </div>
-                    <div class="fbcmf-ar-content" style="display: none;">
-                        <div class="fbcmf-ar-stats">
-                            <div><strong>${t('stats')}:</strong></div>
-                            <div>${t('blockedCount')}: <span id="fbcmf-ar-blocked-count">${stats.blockedRequests}</span></div>
-                            <div>${t('uptime')}: <span id="fbcmf-ar-uptime">${stats.getUptime()}</span></div>
-                        </div>
-                        <div class="fbcmf-ar-controls">
-                            <label>
-                                <input type="checkbox" id="fbcmf-ar-enable-toggle" ${CONFIG.enabled ? 'checked' : ''}>
-                                ${t('enabled')}
-                            </label>
-                            <label>
-                                ${t('language')}:
-                                <select id="fbcmf-ar-lang-select">
-                                    <option value="vi" ${CONFIG.lang === 'vi' ? 'selected' : ''}>Tiếng Việt</option>
-                                    <option value="en" ${CONFIG.lang === 'en' ? 'selected' : ''}>English</option>
-                                </select>
-                            </label>
-                            <label>
-                                ${t('blockLevel')}:
-                                <select id="fbcmf-ar-block-level">
-                                    <option value="low" ${CONFIG.blockLevel === 'low' ? 'selected' : ''}>${t('low')}</option>
-                                    <option value="medium" ${CONFIG.blockLevel === 'medium' ? 'selected' : ''}>${t('medium')}</option>
-                                    <option value="high" ${CONFIG.blockLevel === 'high' ? 'selected' : ''}>${t('high')}</option>
-                                </select>
-                            </label>
-                            <label>
-                                ${t('inactivityTime')}:
-                                <input type="number" id="fbcmf-ar-inactivity-time" value="${CONFIG.inactivityTime / 1000}" min="10" max="300">
-                            </label>
-                            <label>
-                                <input type="checkbox" id="fbcmf-ar-notifications-toggle" ${CONFIG.showNotifications ? 'checked' : ''}>
-                                ${t('notifications')}
-                            </label>
-                            <label>
-                                <input type="checkbox" id="fbcmf-ar-debug-toggle" ${CONFIG.debug ? 'checked' : ''}>
-                                ${t('debug')}
-                            </label>
-                        </div>
-                        <div class="fbcmf-ar-buttons">
-                            <button id="fbcmf-ar-save-btn">${t('save')}</button>
-                            // Reset button might be redundant if save causes reload via UIManager
-                            // <button id="fbcmf-ar-reset-btn">${t('reset')}</button>
-                        </div>
-                    </div>
-                `;
+        // Minimal showNotification function if still needed, or rely on UIManager for all user feedback
+        const showNotification = (message, type = 'info') => {
+            // This module no longer creates its own panel, so direct notifications might need
+            // a global notification system if UIManager doesn't cover all cases.
+            // For now, keeping it simple and assuming UIManager handles primary feedback.
+            // If this module *must* show its own (e.g. for blocked requests), it needs a simple mechanism.
+            if (!CONFIG.showNotifications) return;
 
-                document.body.appendChild(panel);
-                ui.elements.panel = panel;
-                ui.attachEvents();
-                ui.updateStatus(); // Initial status update
-            },
-
-            attachEvents: () => {
-                const panel = ui.elements.panel;
-                if (!panel) return;
-
-                panel.querySelector('.fbcmf-ar-toggle').addEventListener('click', (e) => {
-                    e.preventDefault(); e.stopPropagation(); fbAntiRefresh.toggleSettings();
-                });
-                panel.querySelector('.fbcmf-ar-minimize').addEventListener('click', (e) => {
-                    e.preventDefault(); e.stopPropagation(); fbAntiRefresh.minimize();
-                });
-                panel.querySelector('#fbcmf-ar-save-btn').addEventListener('click', (e) => {
-                    e.preventDefault(); e.stopPropagation(); fbAntiRefresh.saveSettings();
-                });
-                // panel.querySelector('#fbcmf-ar-reset-btn')?.addEventListener('click', (e) => { // Optional if kept
-                //     e.preventDefault(); e.stopPropagation(); fbAntiRefresh.resetSettings();
-                // });
-                panel.querySelector('#fbcmf-ar-enable-toggle').addEventListener('change', () => {
-                    // Directly update status display, actual save happens on "Save" button
-                    ui.updateStatus(panel.querySelector('#fbcmf-ar-enable-toggle').checked);
-                });
-
-                // Draggable panel (copied, ensure it works with prefixed classes)
-                let isDragging = false, startX, startY, startLeft, startTop;
-                const header = panel.querySelector('.fbcmf-ar-header');
-                header.addEventListener('mousedown', (e) => {
-                    if (e.target.classList.contains('fbcmf-ar-toggle') || e.target.classList.contains('fbcmf-ar-minimize')) return;
-                    isDragging = true;
-                    startX = e.clientX; startY = e.clientY;
-                    startLeft = panel.offsetLeft; startTop = panel.offsetTop;
-                    const onMouseMove = (ev) => {
-                        if (!isDragging) return;
-                        panel.style.left = (startLeft + ev.clientX - startX) + 'px';
-                        panel.style.top = (startTop + ev.clientY - startY) + 'px';
-                    };
-                    const onMouseUp = () => {
-                        isDragging = false;
-                        document.removeEventListener('mousemove', onMouseMove);
-                        document.removeEventListener('mouseup', onMouseUp);
-                    };
-                    document.addEventListener('mousemove', onMouseMove);
-                    document.addEventListener('mouseup', onMouseUp);
-                });
-            },
-
-            updateStatus: (isManuallyEnabled) => { // isManuallyEnabled is for immediate UI feedback before save
-                const statusEl = ui.elements.panel?.querySelector('.fbcmf-ar-status');
-                if (statusEl) {
-                    const currentEnabledState = typeof isManuallyEnabled === 'boolean' ? isManuallyEnabled : CONFIG.enabled;
-                    statusEl.textContent = currentEnabledState ? t('enabled') : t('disabled');
-                    statusEl.className = `fbcmf-ar-status ${currentEnabledState ? 'enabled' : 'disabled'}`;
+            // A very basic notification, could be improved or centralized
+            const notification = context.DOMUtils.createElement('div', {
+                className: `fbcmf-ar-notification-module ${type}`, // Use a distinct class
+                textContent: message,
+                style: { // Basic styling, ideally use GM_addStyle for this if kept
+                    position: 'fixed',
+                    bottom: '20px',
+                    left: '20px',
+                    padding: '10px',
+                    background: type === 'error' ? '#ffdddd' : (type === 'warning' ? '#fff3cd' : '#ddffdd'),
+                    border: `1px solid ${type === 'error' ? 'red' : (type === 'warning' ? '#ffeeba' : 'green')}`,
+                    borderRadius: '5px',
+                    zIndex: '1000001', // Ensure it's above most things
+                    color: '#333'
                 }
-            },
-
-            updateStats: () => {
-                const blockedElement = document.getElementById('fbcmf-ar-blocked-count');
-                const uptimeElement = document.getElementById('fbcmf-ar-uptime');
-                if (blockedElement) blockedElement.textContent = stats.blockedRequests;
-                if (uptimeElement) uptimeElement.textContent = stats.getUptime();
-            },
-
-            showNotification: (message, type = 'info') => {
-                if (!CONFIG.showNotifications) return;
-                const notification = context.DOMUtils.createElement('div', {
-                    className: `fbcmf-ar-notification ${type}`,
-                    textContent: message
-                });
-                document.body.appendChild(notification);
-                setTimeout(() => {
-                    notification.style.opacity = '0';
-                    setTimeout(() => notification.remove(), 300);
-                }, 3000);
-            }
+            });
+            document.body.appendChild(notification);
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 500); // Faster removal
+            }, 2500);
+            logger.log(`Notification: ${message} (type: ${type})`);
         };
+
+        // Stats update is also removed as its display was part of the old UI
+        // const updateStats = () => { ... }
+
 
         // === ENHANCED BLOCKING LOGIC (Copied, uses CONFIG) ===
         const blocker = {
@@ -321,62 +215,8 @@
             }
         };
 
-        // === CSS STYLES (Prefixed, uses GM_addStyle) ===
-        const loadStyles = () => {
-            GM_addStyle(`
-                #${ui.panelId} { /* Prefixed ID */
-                    position: fixed; top: 20px; right: 20px; width: 320px;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-                    z-index: 999998; /* Slightly below main settings if needed */
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    font-size: 14px; color: white; user-select: none;
-                    backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
-                }
-                .${ui.panelId} .fbcmf-ar-header { /* Prefixed class based on panel ID for scoping */
-                    padding: 12px 16px; background: rgba(255,255,255,0.1);
-                    border-radius: 12px 12px 0 0; display: flex;
-                    justify-content: space-between; align-items: center; cursor: move;
-                    border-bottom: 1px solid rgba(255,255,255,0.1);
-                }
-                .${ui.panelId} .fbcmf-ar-title { font-weight: 600; font-size: 13px; }
-                .${ui.panelId} .fbcmf-ar-status { padding: 4px 8px; border-radius: 20px; font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
-                .${ui.panelId} .fbcmf-ar-status.enabled { background: rgba(34, 197, 94, 0.2); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); }
-                .${ui.panelId} .fbcmf-ar-status.disabled { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
-                .${ui.panelId} .fbcmf-ar-toggle, .${ui.panelId} .fbcmf-ar-minimize {
-                    background: rgba(255,255,255,0.1); border: none; color: white;
-                    width: 28px; height: 28px; border-radius: 6px; cursor: pointer;
-                    font-size: 12px; transition: background 0.2s ease;
-                }
-                .${ui.panelId} .fbcmf-ar-toggle:hover, .${ui.panelId} .fbcmf-ar-minimize:hover { background: rgba(255,255,255,0.2); }
-                .${ui.panelId} .fbcmf-ar-content { padding: 16px; }
-                .${ui.panelId} .fbcmf-ar-stats { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 12px; line-height: 1.6; }
-                .${ui.panelId} .fbcmf-ar-controls { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
-                .${ui.panelId} .fbcmf-ar-controls label { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
-                .${ui.panelId} .fbcmf-ar-controls input[type="checkbox"] { margin-left: 8px; }
-                .${ui.panelId} .fbcmf-ar-controls select, .${ui.panelId} .fbcmf-ar-controls input[type="number"] {
-                    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
-                    color: white; padding: 6px 8px; border-radius: 4px; font-size: 12px; width: 80px;
-                }
-                .${ui.panelId} .fbcmf-ar-controls select option { background: #333; color: white; }
-                .${ui.panelId} .fbcmf-ar-buttons { display: flex; gap: 8px; }
-                .${ui.panelId} .fbcmf-ar-buttons button {
-                    flex: 1; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
-                    color: white; padding: 8px 12px; border-radius: 6px; cursor: pointer;
-                    font-size: 12px; transition: background 0.2s ease;
-                }
-                .${ui.panelId} .fbcmf-ar-buttons button:hover { background: rgba(255,255,255,0.2); }
-                .fbcmf-ar-notification { /* Global, can be less specific if no other module uses this */
-                    position: fixed; top: 80px; right: 20px; background: #333; color: white;
-                    padding: 12px 16px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-                    z-index: 1000000; font-size: 13px; opacity: 1; transition: opacity 0.3s ease;
-                    max-width: 280px;
-                }
-                .fbcmf-ar-notification.success { background: #22c55e; }
-                .fbcmf-ar-notification.warning { background: #f59e0b; }
-                .fbcmf-ar-notification.error { background: #ef4444; }
-            `);
-        };
+        // === CSS STYLES (REMOVED - No longer has its own panel) ===
+        // const loadStyles = () => { ... GM_addStyle ... };
 
         // === MAIN FUNCTIONALITY OBJECT ===
         const fbAntiRefresh = {
@@ -386,38 +226,36 @@
                     return;
                 }
                 logger.log(`Initializing Anti-Refresh Pro Module v${CONFIG.version}...`);
-                loadStyles(); // Load CSS
+                // loadStyles(); // REMOVED: No custom panel CSS needed now
 
                 fbAntiRefresh.setupVisibilityOverrides();
                 fbAntiRefresh.setupEventBlocking();
                 fbAntiRefresh.setupFetchInterception();
                 fbAntiRefresh.setupActivityTracking();
                 fbAntiRefresh.setupHistoryBlocking();
-                fbAntiRefresh.setupUI();
+                // fbAntiRefresh.setupUI(); // REMOVED: UI is now part of UIManager
                 fbAntiRefresh.removeMetaRefresh();
 
                 logger.log(t('active'));
-                if (CONFIG.enabled) ui.showNotification(t('active'), 'success');
+                // The module's own notification for "active" might be redundant if UIManager handles all.
+                // However, specific operational notifications (like "blocked request") can remain.
+                if (CONFIG.enabled && CONFIG.showNotifications) { // Check showNotifications as well
+                    showNotification(t('active'), 'success');
+                }
 
-                setInterval(() => { ui.updateStats(); }, 60000);
+                // setInterval(() => { ui.updateStats(); }, 60000); // REMOVED: No stats panel to update
 
-                // Listen for global settings changes if UI needs refresh (e.g. language)
+                // Listen for global settings changes.
+                // The main purpose of this listener was to update its own UI (language, status).
+                // Since its UI is gone, this listener's role changes.
+                // It might still be useful if the module needs to re-initialize parts of its logic
+                // based on settings changes that don't require a full page reload.
+                // For now, language for notifications is set at init, and UIManager handles reloads.
                 document.addEventListener('fbcmf:settings-saved', (event) => {
-                    if (event.detail) {
-                        // Check if language changed, if so, recreate panel for new labels
-                        // This is a simple way; a more complex UI would update text in place.
-                        const oldLang = CONFIG.lang; // This will still be old value before getSetting re-evaluates
-                        const newLang = event.detail.antiRefresh_lang;
-                        if (newLang && oldLang !== newLang) {
-                            logger.log('Language changed, re-rendering Anti-Refresh UI.');
-                            if (ui.elements.panel) {
-                                ui.elements.panel.remove();
-                                ui.elements.panel = null; // Clear reference
-                            }
-                            ui.createPanel(); // Recreate with new language
-                        } else {
-                           ui.updateStatus(); // Update status based on potentially changed 'enabled' state
-                        }
+                    if (event.detail && CONFIG.debug) {
+                        logger.log('Global settings saved. AntiRefreshPro received event.');
+                        // Potentially re-evaluate CONFIG values if needed, though getters handle this.
+                        // Example: if a core behavior, not just UI, depended on language directly.
                     }
                 });
             },
@@ -436,9 +274,9 @@
                         }
                         if (blocker.shouldBlock(url)) { // blocker uses CONFIG.enabled
                             logger.log(t('blocked'), url);
-                            stats.increment('blockedRequests');
-                            ui.updateStats();
-                            ui.showNotification(t('blocked'), 'warning');
+                            stats.increment('blockedRequests'); // Keep internal stat if needed for logic, though not displayed
+                            // ui.updateStats(); // REMOVED
+                            showNotification(t('blocked'), 'warning'); // Use the module's own notification
                             return Promise.resolve(new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
                         }
                     }
@@ -449,61 +287,12 @@
             setupHistoryBlocking: () => { /* ... original code ... */ },
             removeMetaRefresh: () => { /* ... original code ... */ },
 
-            setupUI: () => {
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', ui.createPanel);
-                } else {
-                    ui.createPanel();
-                }
-            },
+            // setupUI: () => { ... } // REMOVED
 
-            // --- UI Methods (Modified for FBCMF) ---
-            toggleSettings: () => {
-                const content = ui.elements.panel?.querySelector('.fbcmf-ar-content');
-                if (content) content.style.display = content.style.display === 'none' ? 'block' : 'none';
-            },
-            minimize: () => {
-                const panel = ui.elements.panel;
-                if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-            },
-            saveSettings: async () => {
-                if (!context.saveSettings) {
-                    logger.error("context.saveSettings not available!");
-                    ui.showNotification("Error: Cannot save settings.", "error");
-                    return;
-                }
-                const panel = ui.elements.panel;
-                if (!panel) return;
-
-                const newModuleSettings = {
-                    antiRefresh_enabled: panel.querySelector('#fbcmf-ar-enable-toggle').checked,
-                    antiRefresh_lang: panel.querySelector('#fbcmf-ar-lang-select').value,
-                    antiRefresh_blockLevel: panel.querySelector('#fbcmf-ar-block-level').value,
-                    antiRefresh_inactivityTime: parseInt(panel.querySelector('#fbcmf-ar-inactivity-time').value) * 1000,
-                    antiRefresh_showNotifications: panel.querySelector('#fbcmf-ar-notifications-toggle').checked,
-                    antiRefresh_debug: panel.querySelector('#fbcmf-ar-debug-toggle').checked
-                };
-
-                logger.log("Saving Anti-Refresh settings:", newModuleSettings);
-                try {
-                    const success = await context.saveSettings(newModuleSettings); // Save only its own settings
-                    if (success) {
-                        ui.showNotification(t('settingsSaved'), 'success');
-                        // SettingsManager/UIManager might reload the page, so this module doesn't need to explicitly.
-                        // If language changed, the 'fbcmf:settings-saved' listener will handle UI refresh or recreate.
-                        ui.updateStatus(); // Reflect changes immediately in this module's UI
-                    } else {
-                        ui.showNotification("Save failed (framework)", "error");
-                    }
-                } catch (e) {
-                    logger.error("Error saving Anti-Refresh settings:", e);
-                    ui.showNotification("Save error: " + e.message, "error");
-                }
-            },
-            // resetSettings: () => { // This would require more complex interaction with SettingsManager
-            //     logger.warn("Resetting settings for Anti-Refresh is not fully implemented via FBCMF individual reset. Use global reset or re-save defaults.");
-            //     // To implement properly, would need to save MODULE_DEFAULTS via context.saveSettings
-            // }
+            // --- UI Methods (REMOVED) ---
+            // toggleSettings: () => { ... },
+            // minimize: () => { ... },
+            // saveSettings: async () => { ... } // Saving is now handled by UIManager
         };
 
         // --- Copy original methods to fbAntiRefresh object that don't need context directly or use CONFIG ---
