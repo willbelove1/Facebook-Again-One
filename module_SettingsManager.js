@@ -28,6 +28,23 @@ FBCMF.registerModule('SettingsManager', async (ctx) => {
     autoSortChrono: false,
     autoSuggestKeywords: false,
     geminiApiKey: '',
+
+    // Defaults for FacebookAntiRefreshPro module
+    antiRefresh_enabled: true,
+    antiRefresh_debug: false,
+    antiRefresh_lang: 'vi', // Default language 'vi' or 'en'
+    antiRefresh_inactivityTime: 60000, // milliseconds
+    antiRefresh_historyBlockTime: 120000, // milliseconds
+    antiRefresh_showNotifications: true,
+    antiRefresh_blockLevel: 'medium', // 'low', 'medium', 'high'
+
+    // Defaults for FacebookMultiColumnEnhanced module
+    multiColumn_columnCount: 3,
+    multiColumn_columnGap: 20, // px
+    multiColumn_maxPostHeight: 70, // vh %
+    multiColumn_sidebarWidth: 60, // px
+    multiColumn_enabled: true,
+    multiColumn_language: 'vi', // This could also default to global language if desired
   };
 
   // Asynchronous function to load settings from GM storage

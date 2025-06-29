@@ -25,8 +25,10 @@
 // @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_VideoAdBlocker.js
 // @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_ReelVideoControls.js
 // @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_LogoutButton.js
-// @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_CommentsHelper.js
+// @require      https://raw.githubusercontent.com/willbelove1.com/my_facebook_my_rules/main/module_CommentsHelper.js
 // @require      https://raw.githubusercontent.com/willbelove1/my_facebook_my_rules/main/module_AI.js
+// @require      ./module_FacebookAntiRefreshPro.js
+// @require      ./module_FacebookMultiColumnEnhanced.js
 // ==/UserScript==
 
 if (!window.__FBCMF_SKIP_INIT__) {
