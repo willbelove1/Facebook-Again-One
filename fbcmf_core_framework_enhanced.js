@@ -5,76 +5,70 @@
  * Kiến trúc mở rộng (Extensible Architecture) cho các module gắn thêm
  * Phiên bản: 1.3.0 (Delegates settings to SettingsManager using GM Storage)
  */
-(function () {
+// FBCMF - Facebook Cleaner Modular Framework (Core)
+// Adapted for Manifest V3 Chrome Extension
+// Phiên bản: 2.0.0 (Extension Adaptation)
+
+// This function will be called by content_bundle.js to create and initialize the framework instance.
+function createFBCMF() {
   'use strict';
 
-  // Khởi tạo namespace global
-  window.FBCMF = window.FBCMF || {};
-  
-  // Đảm bảo các thuộc tính cơ bản tồn tại
-  window.FBCMF.modules = window.FBCMF.modules || new Map();
-  window.FBCMF.settings = window.FBCMF.settings || {}; // Will be populated by SettingsManager
-  window.FBCMF.context = window.FBCMF.context || {};
-  window.FBCMF.initialized = window.FBCMF.initialized || false;
+  const FBCMF_INSTANCE = {
+    modules: new Map(),
+    settings: {}, // Will be populated by SettingsManager
+    context: {},
+    initialized: false,
 
-  // Mở rộng namespace
-  Object.assign(window.FBCMF, {
-    // Đăng ký mô-đun mới
     registerModule(name, moduleFn) {
       if (typeof moduleFn !== 'function') {
-        console.warn(`[FBCMF] Module "${name}" không hợp lệ.`);
+        console.warn(`[FBCMF] Module "${name}" is not a valid function.`);
         return;
       }
       this.modules.set(name, moduleFn);
-      // Logging verbosity depends on settings loaded later
-      // console.log(`[FBCMF] Module "${name}" đã đăng ký.`); 
+      // console.log(`[FBCMF] Module "${name}" registered.`); // Logging verbosity depends on settings
     },
 
-    // REMOVED: saveSettings - Now handled exclusively by SettingsManager via context
-    // REMOVED: loadSettings - Now handled exclusively by SettingsManager via context
-
-    // Khởi tạo framework chính (Asynchronous)
     async init() {
-      // Kiểm tra DOM đã sẵn sàng chưa
+      // DOM readiness check (setTimeout might not be ideal in content scripts if they are terminated/re-injected)
+      // For extensions, content scripts are typically injected when DOM is ready or idle.
+      // This check is more of a safeguard.
       if (!document.head || !document.body) {
-        console.warn('[FBCMF] DOM chưa sẵn sàng, thử lại sau 1s');
-        setTimeout(() => this.init(), 1000);
+        console.warn('[FBCMF] DOM not ready, retrying init in 1s. This might indicate an issue with script injection timing.');
+        // In an extension context, rather than setTimeout, the injection timing itself should be managed.
+        // However, for minimal changes now:
+        if (!this.initTimeout) { // Prevent multiple timeouts
+            this.initTimeout = setTimeout(() => {
+                delete this.initTimeout; // Clear before retry
+                this.init();
+            }, 1000);
+        }
         return;
       }
       
-      // Kiểm tra đã khởi tạo chưa để tránh khởi tạo nhiều lần
       if (this.initialized) {
-        console.log('[FBCMF] Framework đã được khởi tạo trước đó.');
+        console.log('[FBCMF] Framework already initialized.');
         return;
       }
       
-      console.log('[FBCMF] 🚀 Initializing Core Framework...');
+      console.log('[FBCMF] 🚀 Initializing Core Framework (Extension Version)...');
 
-      // 1. Khởi tạo ngữ cảnh chung ban đầu (settings sẽ được thêm sau bởi SettingsManager)
       this.context = {
         DOMUtils: this.DOMUtils,
-        // settings: {}, // Placeholder, will be populated by SettingsManager
-        // saveSettings: async () => { console.warn("SettingsManager not loaded yet"); return false; },
-        // loadSettings: async () => { console.warn("SettingsManager not loaded yet"); return {}; },
+        injectCSS: this.injectCSS.bind(this), // Bind `this` for injectCSS to access FBCMF_INSTANCE context if needed
+        // SettingsManager will populate settings and its API (saveSettings, loadSettings etc.)
       };
-      console.log('[FBCMF] Context ban đầu đã khởi tạo.');
+      console.log('[FBCMF] Initial context created.');
 
-      // 2. Chạy SettingsManager TRƯỚC TIÊN để tải cài đặt và cung cấp API
       const settingsManagerName = 'SettingsManager';
       if (this.modules.has(settingsManagerName)) {
         try {
-          console.log(`[FBCMF] Đang khởi tạo core module "${settingsManagerName}"...`);
-          // SettingsManager is async, loads settings, and returns its API
-          const settingsAPI = await this.modules.get(settingsManagerName)(this.context);
+          console.log(`[FBCMF] Initializing core module: "${settingsManagerName}"...`);
+          const settingsAPI = await this.modules.get(settingsManagerName)(this.context); // Pass context
           
-          // Cập nhật context với API và settings đã tải từ SettingsManager
           if (settingsAPI && typeof settingsAPI === 'object') {
-            // Merge the returned API (load, save, export, import, getCurrentSettings) into context
-            Object.assign(this.context, settingsAPI);
-            // Crucially, update context.settings with the *actually loaded* settings
-            this.context.settings = settingsAPI.getCurrentSettings ? settingsAPI.getCurrentSettings() : {}; 
-            // Update the global FBCMF.settings as well for potential legacy access (though context is preferred)
-            window.FBCMF.settings = this.context.settings;
+            Object.assign(this.context, settingsAPI); // Merge SettingsManager API into context
+            this.context.settings = settingsAPI.getCurrentSettings ? settingsAPI.getCurrentSettings() : {};
+            this.settings = this.context.settings; // Keep top-level FBCMF_INSTANCE.settings in sync
             console.log(`[FBCMF] ✅ Core module "${settingsManagerName}" loaded. Context updated.`);
             if (this.context.settings?.verbosity === 'verbose') {
                console.log('[FBCMF] Verbose logging enabled.');
@@ -82,98 +76,112 @@
             }
           } else {
              console.error(`[FBCMF] ❌ Core module "${settingsManagerName}" did not return a valid API object.`);
-             // Fallback or error handling needed if settings can't load
              this.context.settings = {}; // Ensure context.settings exists
+             this.settings = {};
           }
         } catch (e) {
-          console.error(`[FBCMF] ❌ Core module "${settingsManagerName}" failed:`, e);
-          this.context.settings = {}; // Ensure context.settings exists even on error
+          console.error(`[FBCMF] ❌ Core module "${settingsManagerName}" initialization failed:`, e);
+          this.context.settings = {};
+          this.settings = {};
         }
       } else {
-        console.error(`[FBCMF] ❌ Critical Error: Core module "${settingsManagerName}" không được tìm thấy. Cannot load settings.`);
-        // Cannot proceed without settings manager
-        return; 
+        console.error(`[FBCMF] ❌ CRITICAL: Core module "${settingsManagerName}" not found. Settings cannot be loaded.`);
+        return; // Cannot proceed without settings manager
       }
 
-      // 3. Chạy các module core khác (trừ SettingsManager đã chạy)
-      const coreModules = ['FilterRegistry', 'UIManager']; // Removed SettingsManager
-      for (const coreName of coreModules) {
+      const coreModulesOrder = ['FilterRegistry', 'UIManager']; // Define order for other core modules
+      for (const coreName of coreModulesOrder) {
         if (this.modules.has(coreName)) {
           try {
             if (this.context.settings?.verbosity === 'verbose') {
-               console.log(`[FBCMF] Đang khởi tạo core module "${coreName}"...`);
+               console.log(`[FBCMF] Initializing core module: "${coreName}"...`);
             }
-            // Pass the now populated context (with settings and APIs)
-            const result = await this.modules.get(coreName)(this.context);
+            const result = await this.modules.get(coreName)(this.context); // Pass context
             if (result && typeof result === 'object') {
-              this.context[coreName] = result;
+              this.context[coreName] = result; // Add module's returned API to context
                if (this.context.settings?.verbosity === 'verbose') {
-                  console.log(`[FBCMF] Đã thêm ${coreName} vào context`);
+                  console.log(`[FBCMF] Added API for "${coreName}" to context.`);
                }
             }
              if (this.context.settings?.verbosity === 'verbose') {
                 console.log(`[FBCMF] ✅ Core module "${coreName}" loaded.`);
              }
           } catch (e) {
-            console.error(`[FBCMF] ❌ Core module "${coreName}" failed:`, e);
+            console.error(`[FBCMF] ❌ Core module "${coreName}" initialization failed:`, e);
           }
         } else {
-          console.warn(`[FBCMF] Core module "${coreName}" không được tìm thấy.`);
+          console.warn(`[FBCMF] Core module "${coreName}" not found.`);
         }
       }
       
-      // 4. Sau đó chạy các module còn lại
       for (const [name, moduleFn] of this.modules.entries()) {
-        // Skip core modules already loaded
-        if (name !== settingsManagerName && !coreModules.includes(name)) {
+        if (name !== settingsManagerName && !coreModulesOrder.includes(name)) {
           try {
              if (this.context.settings?.verbosity === 'verbose') {
-                console.log(`[FBCMF] Đang khởi tạo module "${name}"...`);
+                console.log(`[FBCMF] Initializing module: "${name}"...`);
              }
-            const result = await moduleFn(this.context);
+            const result = await moduleFn(this.context); // Pass context
             if (result && typeof result === 'object') {
-              this.context[name] = result;
+              this.context[name] = result; // Add module's returned API to context
                if (this.context.settings?.verbosity === 'verbose') {
-                  console.log(`[FBCMF] Đã thêm ${name} vào context`);
+                  console.log(`[FBCMF] Added API for "${name}" to context.`);
                }
             }
-             if (this.context.settings?.verbosity === 'verbose') {
+            if (this.context.settings?.verbosity === 'verbose') {
                 console.log(`[FBCMF] ✅ Module "${name}" loaded.`);
-             }
+            }
           } catch (e) {
-            console.error(`[FBCMF] ❌ Module "${name}" failed:`, e);
+            console.error(`[FBCMF] ❌ Module "${name}" initialization failed:`, e);
           }
         }
       }
 
-      // Đánh dấu đã khởi tạo
       this.initialized = true;
       console.log('[FBCMF] ✅ All modules initialized.');
       
-      // Kích hoạt sự kiện framework-initialized
-      document.dispatchEvent(new CustomEvent('fbcmf:framework-initialized'));
+      // Dispatch event on document for inter-script communication if needed by other non-FBCMF scripts on the page
+      // For communication within the extension (e.g., to service worker or popup), use chrome.runtime.sendMessage
+      document.dispatchEvent(new CustomEvent('fbcmf:framework-initialized', { detail: { version: "2.0.0" } }));
     },
 
-    // Tiện ích DOM (No changes needed here)
+    // CSS Injection utility for modules
+    injectCSS(cssString, styleId) {
+      if (!styleId || !cssString) {
+        console.warn('[FBCMF Core] injectCSS: Missing styleId or CSS string.');
+        return;
+      }
+      let styleElement = document.getElementById(styleId);
+      if (!styleElement) {
+        styleElement = document.createElement('style');
+        styleElement.id = styleId;
+        document.head.appendChild(styleElement);
+      }
+      if (styleElement.textContent !== cssString) { // Only update if changed
+        styleElement.textContent = cssString;
+        if (this.context?.settings?.verbosity === 'verbose') {
+            console.log(`[FBCMF Core] Injected/Updated CSS for ID: ${styleId}`);
+        }
+      }
+    },
+
     DOMUtils: {
-      query(selector, context = document) {
-        return Array.from(context.querySelectorAll(selector));
+      query(selector, contextNode = document) {
+        return Array.from(contextNode.querySelectorAll(selector));
       },
       hideElement(el, reason = 'hidden') {
         if (!el || el.dataset.fbcmfHidden) return;
         el.dataset.fbcmfHidden = reason;
-        el.style.transition = 'opacity 0.3s';
-        el.style.opacity = '0.2';
-        // Consider making hiding immediate if transition causes issues
-        // el.style.display = 'none'; 
-        setTimeout(() => { if (el) el.style.display = 'none'; }, 300);
+        // In extensions, direct style manipulation is fine. Consider classes for more complex states.
+        el.style.transition = 'opacity 0.3s ease-out'; // Added ease-out
+        el.style.opacity = '0.1'; // More subtle hiding
+        setTimeout(() => { if (el && el.style.opacity === '0.1') el.style.display = 'none'; }, 300);
       },
       createElement(tag, attributes = {}, children = []) {
         const element = document.createElement(tag);
         for (const [key, value] of Object.entries(attributes)) {
           if (key === 'style' && typeof value === 'object') {
             Object.assign(element.style, value);
-          } else if (key === 'className') {
+          } else if (key === 'className' || key === 'class') { // Allow 'class' as well
             element.className = value;
           } else if (key === 'innerHTML') {
             element.innerHTML = value;
@@ -185,51 +193,45 @@
             element.setAttribute(key, value);
           }
         }
-        for (const child of children) {
+        children.forEach(child => {
           if (typeof child === 'string') {
             element.appendChild(document.createTextNode(child));
           } else if (child instanceof Node) {
             element.appendChild(child);
+          } else if (child) { // Handle DocumentFragment from createRangeInput
+             element.appendChild(child);
           }
-        }
+        });
         return element;
       }
     },
     
-    // Hàm dọn dẹp feed (Updated to use context reliably)
     cleanFeed() {
        if (this.context.settings?.verbosity === 'verbose') {
           console.log('[FBCMF] Attempting to clean feed...');
        }
-      
-      // Check if context and necessary modules/settings are loaded
       if (!this.context || !this.context.settings) {
           console.warn('[FBCMF] Cannot clean feed: Context or settings not available.');
           return false;
       }
 
-      // Prioritize MutationObserver if available
       if (this.context.MutationObserver && typeof this.context.MutationObserver.processNewPosts === 'function') {
          if (this.context.settings?.verbosity === 'verbose') {
-             console.log('[FBCMF] Using MutationObserver.processNewPosts()');
+             console.log('[FBCMF] Using MutationObserver.processNewPosts() for feed cleaning.');
          }
-        // Assuming processNewPosts uses context internally for settings
         this.context.MutationObserver.processNewPosts(); 
         return true;
       }
       
-      // Fallback to manual cleaning with FilterRegistry
       if (this.context.FilterRegistry && typeof this.context.FilterRegistry.apply === 'function') {
          if (this.context.settings?.verbosity === 'verbose') {
-             console.log('[FBCMF] Fallback: Cleaning manually with FilterRegistry');
+             console.log('[FBCMF] Fallback: Cleaning manually with FilterRegistry.');
          }
-        // Ensure DOMUtils is available via context or this
-        const domUtils = this.context.DOMUtils || this.DOMUtils;
-        const posts = domUtils.query('div[role="article"], div[role="feed"] > div');
+        const domUtils = this.DOMUtils; // Use instance's DOMUtils
+        const posts = domUtils.query('div[role="article"], div[role="feed"] > div'); // Example selectors
         let hiddenCount = 0;
         
         posts.forEach(post => {
-          // Pass the current settings from the context
           const reason = this.context.FilterRegistry.apply(post, this.context.settings);
           if (reason) {
             domUtils.hideElement(post, reason);
@@ -238,27 +240,21 @@
         });
         
          if (this.context.settings?.verbosity === 'verbose') {
-            console.log(`[FBCMF] Manually hid ${hiddenCount} posts.`);
+            console.log(`[FBCMF] Manually hid ${hiddenCount} posts via FilterRegistry.`);
          }
         return hiddenCount > 0;
       }
       
-      console.warn('[FBCMF] Cannot clean feed: Neither MutationObserver nor FilterRegistry seem properly initialized in context.');
+      console.warn('[FBCMF] Cannot clean feed: Neither MutationObserver nor FilterRegistry are properly initialized in context.');
       return false;
     }
-  });
+  };
 
-  // Tự khởi chạy nếu không phải module riêng lẻ
-  if (!window.__FBCMF_SKIP_INIT__) {
-    // Use appropriate event listener based on environment
-    if (document.readyState === 'loading') {
-      // DOMContentLoaded is generally reliable
-      document.addEventListener('DOMContentLoaded', () => window.FBCMF.init());
-    } else {
-      // If DOM is already ready, init with a slight delay to ensure other scripts might load
-      setTimeout(() => window.FBCMF.init(), 100); 
-    }
-  }
+  return FBCMF_INSTANCE;
+}
 
-})();
+// Remove the self-executing part and direct window.FBCMF assignment.
+// The content_bundle.js will call createFBCMF() and manage its instance.
+// (function () { ... })(); // This IIFE is removed.
+// if (!window.__FBCMF_SKIP_INIT__) { ... } // This auto-init logic is removed.
 

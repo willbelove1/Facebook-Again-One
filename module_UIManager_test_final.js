@@ -1,23 +1,18 @@
 /**
- * Module: UIManager (Nâng cấp + Fix GM Storage + Reload)
- * Mục đích: Quản lý giao diện người dùng, sử dụng ctx.saveSettings (async) để lưu, tự động tải lại trang sau khi lưu.
- * Phiên bản: 2.2.0 (Thêm reload on save)
+ * Module: UIManager (Adapted for FBCMF Extension - Manifest V3)
+ * Purpose: Manages the main settings UI, uses ctx.saveSettings (async) from SettingsManager.
+ * Version: 3.0.0 (Extension Adaptation)
  */
-(function() {
+async function UIManagerModule(ctx) { // Changed to a named async function, removed IIFE and self-registration
   "use strict";
 
-  // Đảm bảo namespace FBCMF đã được khởi tạo
-  window.FBCMF = window.FBCMF || {};
+    // Store the CSS directly as strings. Injection will be handled by a core FBCMF utility or service worker.
+    // For now, this module will make them available.
+    let uiManagerCSS = ""; // Will hold the combined CSS for the current theme.
 
-  FBCMF.registerModule = FBCMF.registerModule || function(name, initFn) {
-    if (!FBCMF.modules) FBCMF.modules = new Map(); // Use Map consistently
-    FBCMF.modules.set(name, initFn);
-  };
-
-  FBCMF.registerModule("UIManager", async (ctx) => {
     // Check if context and settings are available
     if (!ctx || !ctx.settings || !ctx.saveSettings || !ctx.loadSettings) {
-        console.error("[UIManager] Critical Error: Context (ctx), ctx.settings, ctx.saveSettings, or ctx.loadSettings is missing. Cannot initialize UI.");
+        console.error("[FBCMF UIManager] Critical Error: Context (ctx), ctx.settings, ctx.saveSettings, or ctx.loadSettings is missing. Cannot initialize UI.");
         return; 
     }
 
@@ -563,28 +558,30 @@
       }
     `;
 
-    // Thêm CSS vào trang
+    // Thêm CSS vào trang - ADAPTED FOR EXTENSION
     function addCSS() {
-      const styleId = "fbcmf-style";
-      let style = document.getElementById(styleId);
-      if (!style) {
-          style = document.createElement("style");
-          style.id = styleId;
-          document.head.appendChild(style);
+      // In an extension, GM_addStyle is not available.
+      // CSS should be injected using chrome.scripting.insertCSS or by linking a web_accessible_resource.
+      // For now, we'll store the CSS string and assume FBCMF core or an initializer will handle injection.
+      uiManagerCSS = currentTheme === "dark" ? darkThemeCSS : lightThemeCSS;
+      log("UIManager CSS prepared for theme: " + currentTheme + ". Injection to be handled by core.");
+
+      // If a direct injection method via context is available (to be implemented in FBCMF core):
+      if (ctx.injectCSS && typeof ctx.injectCSS === 'function') {
+          ctx.injectCSS(uiManagerCSS, "fbcmf-uimanager-styles"); // Provide an ID for the style element
+      } else {
+          log("ctx.injectCSS not available. UIManager CSS not injected automatically by this module.", "warn");
       }
-      // Use currentTheme which is initialized from ctx.settings
-      style.textContent = currentTheme === "dark" ? darkThemeCSS : lightThemeCSS;
-      log("Applied CSS for theme: " + currentTheme);
     }
 
     // Cập nhật theme (Called when theme changes in settings)
     function updateTheme(newTheme) {
         if (newTheme && newTheme !== currentTheme) {
             log(`Theme changed to: ${newTheme}`);
-            currentTheme = newTheme;
-            addCSS(); // Re-apply CSS with the new theme
-        } else {
-            addCSS(); // Ensure CSS is present on initial load
+            currentTheme = newTheme; // Update currentTheme first
+            addCSS(); // Then call addCSS which uses the updated currentTheme
+        } else if (!document.getElementById("fbcmf-uimanager-styles")) { // Ensure CSS is injected if not already present
+            addCSS();
         }
     }
 
@@ -1146,7 +1143,12 @@
         }
     });
 
-    console.log("[UIManager] ✅ Đã sẵn sàng (sử dụng Context API + Reload on Save).");
-  });
-})();
+    console.log("[FBCMF UIManager] ✅ Ready (Adapted for Extension).");
+    // This module doesn't necessarily need to return an API if its job is just to create the UI.
+    // However, if other modules needed to interact with it (e.g., trigger status messages), it could.
+    return {
+        getStyles: () => uiManagerCSS, // Expose the CSS if core needs to fetch it
+        // publicMethod: () => {}
+    };
+} // End of UIManagerModule
 

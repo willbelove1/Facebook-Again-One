@@ -1,14 +1,19 @@
 
 
 /**
- * Module: SettingsManager (Fixed for Violentmonkey)
- * Mục đích: Cung cấp API lưu trữ/lấy cài đặt sử dụng GM_setValue/GM_getValue, hỗ trợ import/export
- * Yêu cầu: @grant GM_setValue, @grant GM_getValue trong script chính.
+ * Module: SettingsManager (Adapted for Chrome Extension - Manifest V3)
+ * Purpose: Provides API for storing/retrieving settings using chrome.storage.local, supports import/export.
+ * Requires: "storage" permission in manifest.json.
  */
-FBCMF.registerModule('SettingsManager', async (ctx) => {
-  const storageKey = 'fbcmf-settings'; // Key for GM storage
-  const defaults = {
-    blockSponsored: true,
+function SettingsManagerModuleFactory(FBCMF_CORE) { // Accept FBCMF_CORE if it's needed for direct FBCMF.settings update
+  // This module will be registered with an instance of FBCMF.
+  // It's wrapped in a factory to be consistent if we decide to pass FBCMF_CORE instance.
+  // For now, it assumes FBCMF_CORE.settings will be updated by the core after this module returns its API.
+
+  return async (ctx) => { // ctx is the context from FBCMF_INSTANCE
+    const storageKey = 'fbcmf-settings'; // Key for chrome.storage.local
+    const defaults = {
+      blockSponsored: true,
     blockSuggested: true,
     blockReels: true,
     blockGIFs: true,
@@ -47,104 +52,109 @@ FBCMF.registerModule('SettingsManager', async (ctx) => {
     multiColumn_language: 'vi', // This could also default to global language if desired
   };
 
-  // Asynchronous function to load settings from GM storage
-  async function load() {
-    try {
-      const raw = await GM_getValue(storageKey, null);
-      const loadedSettings = raw ? JSON.parse(raw) : {};
-      // Merge defaults with loaded settings to ensure all keys exist
-      const finalSettings = { ...defaults, ...loadedSettings };
-      if (ctx.settings?.verbosity === 'verbose') {
-         console.log('[FBCMF Settings] Settings loaded:', finalSettings);
-      }
-      return finalSettings;
-    } catch (e) {
-      console.error('[FBCMF Settings] Error loading settings from GM_getValue:', e);
-      // Return defaults in case of error
-      return { ...defaults };
-    }
-  }
+    // Asynchronous function to load settings from chrome.storage.local
+    async function load() {
+      try {
+        // chrome.storage.local.get returns an object like { [storageKey]: value }
+        const result = await chrome.storage.local.get(storageKey);
+        const raw = result[storageKey]; // Get the stringified JSON
+        const loadedSettings = raw ? JSON.parse(raw) : {};
+        const finalSettings = { ...defaults, ...loadedSettings };
 
-  // Asynchronous function to save settings to GM storage
-  async function save(newSettings) {
-    try {
-      // Merge with current settings and ensure defaults are considered
-      // Important: Load current settings first to not lose unrelated keys
-      const currentSettings = FBCMF.settings || defaults; 
-      const dataToSave = { ...currentSettings, ...newSettings };
-      
-      // Ensure we don't save undefined values that might come from checkboxes
-      for (const key in dataToSave) {
-        if (dataToSave[key] === undefined) {
-           // Fallback to default if a key becomes undefined unexpectedly
-           dataToSave[key] = defaults[key]; 
+        // Use FBCMF_CORE.context for logging if verbosity is set, otherwise console.log directly
+        // This check is a bit tricky as ctx.settings might not be populated when load() is first called by this module itself.
+        // For now, will rely on FBCMF_CORE's context potentially being available or a direct console log.
+        if ((ctx && ctx.settings?.verbosity === 'verbose') || FBCMF_CORE?.context?.settings?.verbosity === 'verbose') {
+           console.log('[FBCMF Settings] Settings loaded from chrome.storage:', finalSettings);
+        } else {
+           // console.log('[FBCMF Settings] Settings loaded (standard verbosity).'); // Optional basic log
         }
+        return finalSettings;
+      } catch (e) {
+        console.error('[FBCMF Settings] Error loading settings from chrome.storage.local:', e);
+        return { ...defaults }; // Return defaults in case of error
       }
-
-      await GM_setValue(storageKey, JSON.stringify(dataToSave));
-      FBCMF.settings = dataToSave; // Update global settings object
-      if (ctx.settings?.verbosity === 'verbose') {
-        console.log('[FBCMF Settings] Settings saved:', dataToSave);
-      }
-      // Notify other modules if needed (optional, can be done via framework event)
-      document.dispatchEvent(new CustomEvent('fbcmf:settings-saved', { detail: dataToSave }));
-      return true; // Indicate success
-    } catch (e) {
-      console.error('[FBCMF Settings] Error saving settings with GM_setValue:', e);
-      // Optionally notify user about the save failure
-      // alert('❌ Error saving settings. Check browser console for details.');
-      return false; // Indicate failure
     }
-  }
 
-  // Export settings (remains synchronous, exports current state)
-  function exportSettings() {
-    // Ensure FBCMF.settings is up-to-date before exporting
-    return JSON.stringify(FBCMF.settings || defaults, null, 2);
-  }
+    // Asynchronous function to save settings to chrome.storage.local
+    async function save(newSettings) {
+      try {
+        // Get current settings state (either from FBCMF_CORE instance or load fresh)
+        // This ensures we merge with the most up-to-date settings before saving.
+        const currentStoredSettings = await load(); // Load fresh to avoid race conditions if FBCMF_CORE.settings isn't updated yet
+        const dataToSave = { ...currentStoredSettings, ...newSettings };
 
-  // Import settings (becomes asynchronous due to save call)
-  async function importSettings(jsonStr) {
-    try {
-      const obj = JSON.parse(jsonStr);
-      const success = await save(obj); // Use the async save function
-      if (success) {
-        alert('✅ Nhập cài đặt thành công. Tải lại trang để áp dụng đầy đủ!');
-        // Consider if reload is always necessary or if settings can be applied dynamically
-        location.reload(); 
-      } else {
-         alert('❌ Lỗi khi lưu cài đặt đã nhập.');
+        for (const key in dataToSave) {
+          if (dataToSave[key] === undefined) {
+             dataToSave[key] = defaults[key];
+          }
+        }
+
+        await chrome.storage.local.set({ [storageKey]: JSON.stringify(dataToSave) });
+
+        // Update the FBCMF_CORE instance's settings immediately if FBCMF_CORE is available
+        if (FBCMF_CORE) {
+            FBCMF_CORE.settings = dataToSave;
+            if (FBCMF_CORE.context) FBCMF_CORE.context.settings = dataToSave; // also update context
+        }
+
+        if ((ctx && ctx.settings?.verbosity === 'verbose') || FBCMF_CORE?.context?.settings?.verbosity === 'verbose') {
+          console.log('[FBCMF Settings] Settings saved to chrome.storage:', dataToSave);
+        }
+        document.dispatchEvent(new CustomEvent('fbcmf:settings-saved', { detail: dataToSave }));
+        return true;
+      } catch (e) {
+        console.error('[FBCMF Settings] Error saving settings to chrome.storage.local:', e);
+        return false;
       }
-    } catch (e) {
-      console.error('[FBCMF Settings] Error importing settings:', e);
-      alert('❌ Lỗi khi nhập cài đặt. Kiểm tra định dạng JSON và console.');
     }
-  }
 
-  // --- Initialization within the module --- 
-  console.log('[SettingsManager] Initializing and loading settings...');
-  // Load settings asynchronously and update the global object
-  FBCMF.settings = await load(); 
-  console.log('[SettingsManager] Initial settings loaded:', FBCMF.settings);
+    // Export settings (remains synchronous, exports current state from FBCMF_CORE if available)
+    function exportSettings() {
+      // It should export the *current effective settings* which FBCMF_CORE holds
+      const settingsToExport = FBCMF_CORE ? FBCMF_CORE.settings : (ctx.settings || defaults);
+      return JSON.stringify(settingsToExport, null, 2);
+    }
 
-  // Attach the updated async functions to the context
-  // Note: load() returns the loaded settings directly now
-  ctx.loadSettings = load; // Provides the async load function
-  ctx.saveSettings = save; // Provides the async save function
-  ctx.exportSettings = exportSettings; // Remains sync
-  ctx.importSettings = importSettings; // Becomes async
-  // Also provide direct access to the current settings state via context
-  ctx.settings = FBCMF.settings; 
+    // Import settings (becomes asynchronous due to save call)
+    async function importSettings(jsonStr) {
+      try {
+        const obj = JSON.parse(jsonStr);
+        // Before saving, ensure we are merging with defaults to not miss any new default keys
+        const settingsToImport = { ...defaults, ...obj };
+        const success = await save(settingsToImport);
+        if (success) {
+          // Alerting from content script is fine.
+          alert('✅ Settings imported successfully. Page will reload to apply all changes.');
+          location.reload();
+        } else {
+           alert('❌ Error saving imported settings.');
+        }
+      } catch (e) {
+        console.error('[FBCMF Settings] Error importing settings:', e);
+        alert('❌ Error importing settings. Check JSON format and console.');
+      }
+    }
 
-  console.log('[SettingsManager] ✅ Đã sẵn sàng (sử dụng GM Storage).');
-  
-  // Return the API for the framework to potentially add to context
-  return {
-      loadSettings: load,
-      saveSettings: save,
-      exportSettings: exportSettings,
-      importSettings: importSettings,
-      getCurrentSettings: () => FBCMF.settings // Function to get current state synchronously
+    // --- Initialization within the module ---
+    // This part is crucial: settings are loaded and become the initial FBCMF_CORE.settings
+    console.log('[SettingsManager] Initializing and loading settings for FBCMF_CORE...');
+    const initialSettings = await load();
+    // The FBCMF_CORE init process will take these initialSettings and populate its own FBCMF_CORE.settings and ctx.settings.
+    console.log('[SettingsManager] Initial settings loaded from chrome.storage:', initialSettings);
+
+    // The API returned will be merged into FBCMF_CORE's context.
+    // FBCMF_CORE.settings will be the single source of truth after init.
+    return {
+        loadSettings: load, // Function to explicitly reload settings if needed
+        saveSettings: save, // Function to save settings
+        exportSettings: exportSettings,
+        importSettings: importSettings,
+        getCurrentSettings: () => initialSettings // Provides the settings loaded at module init. FBCMF_CORE.settings is the live one.
+                                                  // Or, more accurately: () => FBCMF_CORE.settings if FBCMF_CORE is passed and guaranteed to be updated.
+                                                  // For now, this returns the settings as loaded when this module was initialized.
+                                                  // The core framework will ensure FBCMF_INSTANCE.settings and context.settings are the live ones.
+    };
   };
-});
+}
 
